@@ -137,8 +137,140 @@ max_connections
 解读：最大连接数，当max_connections设置太小时（默认151），MySQL可能会报错Too many connections。当max_connections设置太大时（1000以上），操作系统可能忙于线程间的切换而失去响应。
 
 设置：每个连接都会消耗一定内存，计算过程如下：
+```sql
+# 计算每个线程平均消耗的内存
+SELECT CONCAT(ROUND(SUM(VARIABLE_VALUE)/(1024*1024)),'M') AS 'per_connection' 
+       FROM performance_schema.global_variables 
+       WHERE VARIABLE_NAME IN ('read_buffer_size', 'read_rnd_buffer_size', 
+       'sort_buffer_size', 'join_buffer_size', 'thread_stack', 
+       'max_allowed_packet', 'net_buffer_length');  
+       
+# 当前连接数量
+mysql> SHOW STATUS LIKE 'threads_connected'; 
 
+# 内存
+$ top -c|grep mysqld
+PID    USER   PR  NI VIRT     RES    SHR  S  %CPU  %MEM TIME+     COMMAND
+24411  mysql  20  0  8327348  6.458g 7680 S  36.7  85.4 831:56.14 /usr/sbin/mysqld
+```
 
+thread_cache_size
+
+解读：线程缓存大小，客户端连接时，MySQL会为每个连接分配一个线程，通过设置thread_cache_size = N，MySQL可以重复利用保存在缓存中的N个线程，从而改善频繁的线程创建销毁的开销。同时，应用如果有连接池复用设置，那也会改善MySQL Server的线程开销。
+
+设置：可以通过监控SHOW STATUS LIKE ‘threads_connected’的数量，确定每天的平均连接数。
+
+```sql
+mysql> show status like '%thread%';
++------------------------------------------+-------+
+| Variable_name                            | Value |
++------------------------------------------+-------+
+| Delayed_insert_threads                   | 0     |
+| Performance_schema_thread_classes_lost   | 0     |
+| Performance_schema_thread_instances_lost | 0     |
+| Slow_launch_threads                      | 0     |
+| Threads_cached                           | 2     |
+| Threads_connected                        | 216   |
+| Threads_created                          | 2076  |
+| Threads_running                          | 3     |
++------------------------------------------+-------+
+# 如果Threads_created很大，可以考虑加大thread_cache_size值
+
+mysql> show variables like '%thread%';             
++-----------------------------------------+---------------------------+
+| Variable_name                           | Value                     |
++-----------------------------------------+---------------------------+
+| innodb_purge_threads                    | 1                         |
+| innodb_read_io_threads                  | 4                         |
+| innodb_thread_concurrency               | 0                         |
+| innodb_thread_sleep_delay               | 10000                     |
+| innodb_write_io_threads                 | 4                         |
+| max_delayed_threads                     | 20                        |
+| max_insert_delayed_threads              | 20                        |
+| myisam_repair_threads                   | 1                         |
+| performance_schema_max_thread_classes   | 50                        |
+| performance_schema_max_thread_instances | -1                        |
+| pseudo_thread_id                        | 17534                     |
+| thread_cache_size                       | 13                        |
+| thread_concurrency                      | 10                        |
+| thread_handling                         | one-thread-per-connection |
+| thread_stack                            | 262144                    |
++-----------------------------------------+---------------------------+
+```
+my.cnf参考配置
+```sql
+# /etc/my.cnf for mysql 5.6.x
+# add by cd.net on 2022-01-11
+# ---------------------------------
+[mysqld]
+
+datadir = /home/dbcenter/mysql-server
+
+# 最好加上这个，否则连接会巨慢无比，大量超时待认证的连接
+skip_name_resolve
+skip_host_cache
+# 连接数
+max_connections = 500
+max_connect_errors = 500
+# 线程缓存池大小
+thread_cache_size = 100
+
+# 数据+索引 缓存大小
+innodb_buffer_pool_size = 32G
+join_buffer_size = 6G
+sort_buffer_size = 4G
+read_rnd_buffer_size = 4G
+
+# 允许接收的数据包最大值，比如这么大的sql语句
+max_allowed_packet = 128M
+
+# 查询缓存，都关闭
+query_cache_size = 0
+query_cache_type = 0
+
+# query slow
+long_query_time = 1
+slow-query-log = 1
+slow-query-log-file = /home/dbcenter/mysql-server/query-slow.log
+
+# replication +++++++++++++++++++++++++++++++++++++
+# 不同服务器的server-id一定不能一样
+server-id = 1158
+
+# 开启binlog日志
+log_bin = mysql-bin
+binlog_format = mixed
+
+# 这里的参数根据需要调节，控制MySQL高可用安全级别，根据业务特定在性能和数据一致性方面做决策
+# InnoDB在复制中最大的持久性和一致性，[每次commit都 write cache & flush disk]
+innodb_flush_log_at_trx_commit = 1
+sync_binlog = 1
+# 事务日志文件大小
+innodb_log_file_size = 512M
+
+# 忽略几个mysql自带的DB变动日志
+binlog-ignore-db = mysql
+binlog-ignore-db = information_schema
+binlog-ignore-db = performance_schema
+# 同时也不复制这些表
+replicate_wild_ignore_table = mysql.%
+replicate_wild_ignore_table = information_schema.%
+replicate_wild_ignore_table = performance_schema.%
+
+# mysql 8.x 以上不能有下面这句
+innodb_file_format = Barracuda
+innodb_file_per_table = ON
+
+performance_schema = OFF
+sql_mode = NO_ENGINE_SUBSTITUTION,STRICT_TRANS_TABLES
+
+[mysqld_multi]
+mysqld     = /usr/bin/mysqld_safe
+mysqladmin = /usr/bin/mysqladmin
+log        = /var/log/mysqld_multi.log
+
+!includedir /etc/my.cnf.d
+```
 
 
 
