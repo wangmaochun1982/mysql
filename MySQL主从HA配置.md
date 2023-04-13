@@ -1,4 +1,7 @@
+MySQL的主从复制中主要有三个线程：master（binlog dump thread）、slave（I/O thread 、SQL thread），Master一条线程和Slave中的两条线程。
+
 <h3>常用命令</h3>
+
 ```sql
 show master status;
 show slave status\G;
