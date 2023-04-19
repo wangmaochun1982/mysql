@@ -1,0 +1,305 @@
+mysql8.0
+
+      特征	                         InnoDB （MySQL 8.0）	                                          NDB 8
+MySQL服务器版	                        8	                                                             8
+InnoDB 版	                           InnoDB 8.0.19	                                         InnoDB 8.0.19
+NDB群集版本	                             N / A	                                            NDB 8.0.18 / 8.0.18
+存储限制	                              64TB	                                                    128TB
+外键	                                           是	                                                是
+交易	                                 所有标准类型  	                                        READ COMMITTED
+MVCC	                                           有                                                   没有
+数据压缩	                                是	                                           否（可以压缩NDB检查点和备份文件）
+大排支撑（> 14K）	      支持VARBINARY， VARCHAR， BLOB，和 TEXT列	             仅支持BLOB和 TEXT列（使用这些类型存储大量数据可以降低NDB性能）
+复制支持	      使用MySQL Replication进行异步和半同步复制; MySQL 组复制	   NDB集群内的自动同步复制; NDB群集之间的异步复制，使用MySQL Replication（不支持半同步复制）
+读取操作的扩展	            是（MySQL复制）	                                          是（NDB群集中的自动分区; NDB群集复制）
+写入操作的扩展	                  需要应用程序级分区（分片）	                           是（NDB群集中的自动分区对应用程序是透明的）
+高可用性（HA）	                  内置，来自InnoDB集群	                               是（设计用于99.999％的正常运行时间）
+节点故障恢复和故障转移	      来自MySQL Group Replication	                                  自动（NDB架构中的关键元素）
+节点故障恢复的时间	            30秒或更长时间	                                                  通常<1秒
+实时性能	                             没有	                                                          是
+内存表	                              没有	                                    是（某些数据可以选择存储在磁盘上;内存和磁盘数据存储都是耐用的）
+NoSQL访问存储引擎	                        是	                                   是（多个API，包括Memcached，Node.js / JavaScript，Java，JPA，C ++和HTTP / REST）
+并发和并行写入	                           是	                                            最多48个写入器，针对并发写入进行了优化
+冲突检测和解决方案（多个复制主机）	    是（MySQL组复制）	                                               是
+哈希索引	                                  没有	                                                  是
+在线添加节点	            使用MySQL Group Replication读/写副本	                             是（所有节点类型）
+在线升级	                        是（使用复制）	                                                    是
+在线架构修改	                  是的，作为MySQL 8.0的一部分	                                         是
+
+
+
+创建InnoDB集群（手动安装）
+mysql官方下载地址：https://dev.mysql.com/downloads/
+Mysql8.0.16  (mysql-8.0.16-2.el7.x86_64.rpm-bundle.tar)
+Mysql-shell8.0.13  (mysql-shell-8.0.16-1.el7.x86_64.rpm)
+Mysql-router8.0.16  (mysql-router-community-8.0.16-2.el7.x86_64.rpm)
+
+准备环境
+centos7物理机或者虚拟机三台（python版本要在2.7以上）
+
+由于mysql集群连接是通过本机的hostname进行连接所以要对集群内的节点进行映射
+vi /etc/hosts
+
+设置免密登录
+
+mysql安装
+MariaDB数据库管理系统是MySQL的一个分支，主要由开源社区在维护，采用GPL授权许可 MariaDB的目的是完全兼容MySQL
+rpm -qa | grep mariadb
+rpm -e mariadb-libs-5.5.60-1.el7_5.x86_64 --nodeps
+tar -xvf mysql-8.0.16-2.el7.x86_64.rpm-bundle.tar 
+rpm -ivh mysql-community-common-8.0.16-2.el7.x86_64.rpm --nodeps --force
+rpm -ivh mysql-community-libs-8.0.16-2.el7.x86_64.rpm --nodeps --force
+rpm -ivh mysql-community-client-8.0.16-2.el7.x86_64.rpm --nodeps --force
+rpm -ivh mysql-community-server-8.0.16-2.el7.x86_64.rpm --nodeps --force
+mysqld --initialize
+chown mysql:mysql /var/lib/mysql -R
+systemctl start mysqld.service
+systemctl enable mysqld
+
+（如果启动时报错，尝试如下操作
+chmod -R 777 /var/lib/mysql
+rm -rf /var/lib/mysql/*
+systemctl start mysqld.service
+）
+
+查看数据库的密码cat /var/log/mysqld.log | grep password
+mysql -uroot -p
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '(Ciprun123)';  #重置密码
+创建远程访问权限
+create user 'root'@'%' identified with mysql_native_password by '(Ciprun123)';
+grant all privileges on *.* to 'root'@'%' with grant option;
+
+修改加密规则
+ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '(Ciprun123)';
+flush privileges;
+
+mysql shell安装
+rpm -ivh mysql-shell-8.0.16-1.el7.x86_64.rpm --nodeps --force
+mysqlsh --uri root@test1:3306
+dba.configureLocalInstance()
+#退出mysqlshell：ctrl+z
+systemctl restart mysqld
+#检测是否就绪 dba.checkInstanceConfiguration('root@test1:3306')
+#只需要一台上创建cluster：  var cluster = dba.createCluster('mlampClster');
+将另外两台添加进入
+cluster.addInstance('root@test2:3306');
+cluster.addInstance('root@test3:3306');
+#查看状态为ONLINE说明集群安装成功  cluster.status()
+
+
+mysql router安装 （MySQL路由器是InnoDB集群的一部分，是轻量级中间件，可在应用程序和后端MySQL服务器之间提供透明路由。它可用于各种用例，例如通过有效地将数据库流量路由到适当的后端MySQL服务器来提供高可用性和可伸缩性）
+使用生产部署时，我们建议将一个MySQL路由器实例部署到用于托管其中一个客户端应用程序的每台计算机上
+rpm -ivh mysql-router-community-8.0.16-2.el7.x86_64.rpm --nodeps --force
+systemctl restart mysqlrouter
+请使用该 --bootstrap选项提供属于InnoDB群集的服务器实例的位置。MySQL路由器检索InnoDB集群的元数据，包括组成集群的服务器实例地址列表及其在集群中的角色
+mysqlrouter --bootstrap root@test1:3306 --user=mysqlrouter
+cat /etc/mysqlrouter/mysqlrouter.conf
+
+
+
+创建InnoDB集群（yum安装）
+yum安装mysql
+wget https://repo.mysql.com//mysql80-community-release-el7-3.noarch.rpm （下载yum源，可去官网下载）
+rpm -Uvh mysql80-community-release-el7-3.noarch.rpm
+要从最新GA系sql57-community
+列以外的特定系列安装最新版本，请在运行安装命令之前禁用最新GA系列的子存储库并启用特定系列的子存储库
+这些命令禁用8.0系列的子存储库并启用5.7系列的子存储库
+sudo yum-config-manager --disable mysql80-community
+sudo yum-config-manager --enable mysql57-community
+
+vim /etc/yum.repos.d/mysql-commql80-community-release-el7-3.noarch.rpm
+yum repolist all | grep mysql （unity.repo
+[mysql80-community]
+name=MySQL 8.0 Community Server
+baseurl=http://repo.mysql.com/yum/mysql-8.0-community/el/6/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-mysql
+
+找到要配置的子存储库的条目，然后编辑该enabled选项。指定 enabled=0禁用子存储库，或 enabled=1启用子存储库。例如，要安装MySQL 5.7，请确保您具有enabled=0MySQL 8.0的上述子存储库条目，并且具有 enabled=15.7系列的条目：
+vim /etc/yum.repos.d/mysql-community.repo
+# Enable to use MySQL 5.7
+[mysql57-community]
+name=MySQL 5.7 Community Server
+baseurl=http://repo.mysql.com/yum/mysql-5.7-community/el/6/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-mysql
+
+运行以下命令并检查其输出来验证是否已启用和禁用了正确的子存储库
+yum repolist enabled | grep mysql
+
+#安装 sudo yum -y install mysql-community-server
+systemctl start mysqld.service
+systemctl status mysqld.service
+grep 'temporary password' /var/log/mysqld.log
+mysql -uroot -p
+
+MySQL的 validate_password 插件默认安装。这将要求密码包含至少一个大写字母，一个小写字母，一个数字和一个特殊字符，并且密码总长度至少为8个字符。
+ALTER USER 'root'@'localhost' IDENTIFIED BY '(Ciprun123)';
+
+列出适用于平台的所有MySQL组件的软件包
+yum --disablerepo=\* --enablerepo='mysql*-community*' list available
+
+使用MySQL Yum存储库升级MySQL
+yum update mysql-server 或者 yum update -y
+
+在Yum更新后，MySQL服务器需要重新启动，在MySQL 8.0.16之前，在服务器重新启动后运行mysql_upgrade以检查并可能解决旧数据和升级软件之间的任何不兼容问题。mysql_upgrade还执行其他功能; 请参阅mysql_upgrade - 检查并升级MySQL表以获取详细信息。从MySQL 8.0.16开始，此步骤不是必需的，因为服务器执行以前由mysql_upgrade处理的所有任务
+还可以仅更新特定组件。使用以下命令列出MySQL组件的所有已安装软件包
+sudo yum list installed | grep "^mysql"
+sudo yum update package-name
+
+yum安装mysql-shell
+sudo yum -y install mysql-shell
+
+
+yum安装mysql-router
+sudo yum -y install mysql-router
+systemctl start mysqlrouter.service
+systemctl enable mysqlrouter.service
+
+MySQL Workbench是一个用于处理MySQL服务器和数据库的图形工具
+MySQL Workbench功能包括五个主要主题：
+
+SQL开发：使您可以创建和管理与数据库服务器的连接。除了使您能够配置连接参数外，MySQL Workbench还提供了使用内置SQL编辑器在数据库连接上执行SQL查询的功能。
+
+数据建模（设计）：使您能够以图形方式创建数据库模式的模型，在模式和实时数据库之间进行反向和正向工程，并使用全面的表编辑器编辑数据库的所有方面。表编辑器提供了易于使用的工具，用于编辑表，列，索引，触发器，分区，选项，插入和权限，例程和视图。
+
+服务器管理：使您能够通过管理用户，执行备份和恢复，检查审计数据，查看数据库运行状况以及监视MySQL服务器性能来管理MySQL服务器实例。
+
+数据迁移：允许您从Microsoft SQL Server，Microsoft Access，Sybase ASE，SQLite，SQL Anywhere，PostreSQL和其他RDBMS表，对象和数据迁移到MySQL。迁移还支持从早期版本的MySQL迁移到最新版本。
+
+MySQL企业支持：支持企业产品，如MySQL企业备份，MySQL防火墙和MySQL审计。
+
+yum安装MySQL Workbench
+sudo yum install mysql-workbench-community
+
+
+yum 安装MySQL NDB集群
+sudo yum install mysql-cluster-community-server   #安装SQL节点的组件
+sudo yum install mysql-cluster-community-management-server  #安装管理节点的可执行文件
+sudo yum install mysql-cluster-community-data-node  #安装数据节点的可执行文件
+
+NDB集群的初始配置
+管理节点（ndb_mgmd）	10.10.113.240
+SQL节点（mysqld）	      172.16.35.81
+数据节点“A”（ndbd）	172.16.35.36
+数据节点“B”（ndbd）	172.16.35.37
+
+
+NDB集群的快速测试设置
+mkdir /var/lib/mysql-cluster
+
+在此目录中，创建一个config.ini包含以下信息的文件 。为系统替换适当的值HostName并DataDir根据需要替换
+# file "config.ini" - showing minimal setup consisting of 1 data node,
+# 1 management server, and 3 MySQL servers.
+# The empty default sections are not required, and are shown only for
+# the sake of completeness.
+# Data nodes must provide a hostname but MySQL Servers are not required
+# to do so.
+# If you don't know the hostname for your machine, use localhost.
+# The DataDir parameter also has a default value, but it is recommended to
+# set it explicitly.
+# Note: [db], [api], and [mgm] are aliases for [ndbd], [mysqld], and [ndb_mgmd],
+# respectively. [db] is deprecated and should not be used in new installations.
+
+[ndbd default]
+NoOfReplicas= 1
+
+[mysqld  default]
+[ndb_mgmd default]
+[tcp default]
+
+[ndb_mgmd]
+HostName= myhost.example.com
+
+[ndbd]
+HostName= myhost.example.com
+DataDir= /var/lib/mysql-cluster
+
+[mysqld]
+
+现在可以启动ndb_mgmd管理服务器。默认情况下，它会尝试读取config.ini当前工作目录中的 文件，因此将位置更改为文件所在的目录，然后调用ndb_mgmd
+cd /var/lib/mysql-cluster
+ndb_mgmd
+通过运行ndbd启动单个数据节点
+ndbd
+
+将位置更改为MySQL数据目录（通常 /var/lib/mysql或 /usr/local/mysql/data），并确保该my.cnf文件包含启用NDB存储引擎所需的选项
+vim my.cnf
+[mysqld]
+ndbcluster
+
+
+启动MySQL服务器
+mysqld_safe --user=mysql &
+
+
+每个数据节点或SQL节点都需要一个my.cnf提供两条信息的 文件：一个告诉节点在哪里找到管理节点的连接字符串，以及一条告诉该主机（托管数据节点的机器）上的MySQL服务器的线路该 NDBCLUSTER存储引擎
+
+设置每个数据节点和SQL节点
+vim /etc/my.cnf
+[mysqld]
+# Options for mysqld process:
+ndbcluster                      # run NDB storage engine
+
+[mysql_cluster]
+# Options for NDB Cluster processes:
+ndb-connectstring=198.51.100.10  # location of management server
+
+配置管理节点
+mkdir /var/lib/mysql-cluster
+cd /var/lib/mysql-cluster
+
+vim config.ini
+[ndbd default]
+# Options affecting ndbd processes on all data nodes:
+NoOfReplicas=2    # Number of replicas
+DataMemory=98M    # How much memory to allocate for data storage
+
+[ndb_mgmd]
+# Management process options:
+HostName=10.10.113.240          # Hostname or IP address of MGM node
+DataDir=/var/lib/mysql-cluster  # Directory for MGM node log files
+
+[ndbd]
+# Options for data node "A":
+                                # (one [ndbd] section per data node)
+HostName=172.16.35.36          # Hostname or IP address
+NodeId=2                        # Node ID for this data node
+DataDir=/usr/local/mysql/data   # Directory for this data node's data files
+
+[ndbd]
+# Options for data node "B":
+HostName=172.16.35.37          # Hostname or IP address
+NodeId=3                        # Node ID for this data node
+DataDir=/usr/local/mysql/data   # Directory for this data node's data files
+
+[mysqld]
+# SQL node options:
+HostName=172.16.35.81          # Hostname or IP address
+                                # (additional mysqld connections can be
+                                # specified for this node for various
+                                # purposes such as running ndb_restore)
+
+
+
+
+NDB集群的初始启动
+应首先启动管理节点，然后启动数据节点，最后启动任何SQL节点
+
+在管理主机上，从系统shell发出以下命令以启动管理节点进程
+ndb_mgmd -f /var/lib/mysql-cluster/config.ini
+在每个数据节点主机上，运行此命令以启动 ndbd进程
+ndbd
+测试
+ndb_mgm
+
+安全关闭和重启NDB集群
+ndb_mgm -e shutdown
+
+重新启动集群
+#在管理主机上   ndb_mgmd -f /var/lib/mysql-cluster/config.ini
+#在每个数据节点主机  ndbd
+#使用ndb_mgm客户端验证两个数据节点是否已成功启动
+#在SQL主机 mysqld_safe &
