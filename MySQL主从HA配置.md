@@ -6,6 +6,10 @@
 
 （3）同时主节点为每个I/O线程启动一个dump线程，用于向其发送二进制事件，并保存至从节点本地的中继日志中，从节点将启动SQL线程从中继日志中读取二进制日志，在本地重放，使得其数据和主节点的保持一致，最后I/OThread和SQLThread将进入睡眠状态，等待下一次被唤醒。
 
+![image](https://user-images.githubusercontent.com/15883558/233917618-ba479bac-900c-4737-8613-7a32e5f50702.png)
+
+![image](https://user-images.githubusercontent.com/15883558/233917661-4b2d2c3b-20a6-4932-8354-00de78d5273a.png)
+
 
 MySQL的主从复制中主要有三个线程：master（binlog dump thread）、slave（I/O thread 、SQL thread），Master一条线程和Slave中的两条线程。
 
