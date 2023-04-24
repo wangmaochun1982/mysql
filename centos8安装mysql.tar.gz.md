@@ -187,5 +187,28 @@ tmpdir=/tmp
 alter user 'root'@'localhost' identified by 'root';
 flush privileges;
 
+（1）在安装Mysql数据库的主机上使用root用户登录mysql
+
+[root@localhost ~]# mysql -uroot -p
+
+（2）修改加密规则
+
+mysql> alter user 'root'@'%' identified by 'password' password expire never;
+
+（3）更新用户密码
+
+mysql> alter user 'root'@'%' identified with mysql_native_password by 'password';
+
+（4）刷新权限
+
+mysql> flush privileges;
+
+
+（5）重置密码
+
+alter user 'root'@'%' identified by 'root';
+
+
+
 
 
