@@ -193,3 +193,96 @@ on  a.id = b.id;
 深分页的性能问题可以通过业务方法解决：限制每次查询的数量等
 
 <hr>
+排序优化
+
+索引的字段要根据排序的字段走，且要满足最左匹配原则
+
+```sql
+create table t_order (
+    id integer primary key auto_increment,
+    col_1 int not null ,
+    col_2 int not null ,
+    col_3 int not null 
+)
+```
+
+```sql
+select * from t_order order by col_1, col_2, col_3, 需要创建联合索引 col_1,col_2,col_3
+
+select * from t_order order by col_1, col_2，需要创建联合索引 col_1, col_2, col_3
+
+select * from t_order order by col_1 asc, col_2 desc ，需要创建联合索引 col_1 asc, col_2 desc ，
+
+指定索引的排序规则，只有在 MySQL 8 中才支持
+```
+
+索引失效的情况（避免出现 using filesort）
+
+1.没有遵守最左匹配原则
+select * from t_order order by col_1, col_3
+
+![image](https://user-images.githubusercontent.com/15883558/234516818-1c4ebb4b-6a37-436e-8709-043e2fe1f155.png)
+
+
+select * from t_order order by col_2, col_3
+
+![image](https://user-images.githubusercontent.com/15883558/234516895-ec717b5a-849c-4a3d-84bb-591dd6efcf3d.png)
+
+
+可见都使用到了 ****using filesort
+
+以第一条为例
+
+```sql
+最左匹配原则的实质是：
+
+先根据第一列排序，若第一列的值相同就根据第二列来排序，
+
+若第二列的值相同就根据第三列来排序，以此类推；
+```
+![image](https://user-images.githubusercontent.com/15883558/234517394-efb18b51-b31e-4f7a-a887-a58fd82d4fc0.png)
+
+第一条 SQL 中，排序的字段为 col_2 和 col_3 明显 在抛开 col_1 的情况下，col_2 和 col_3 的顺序是无序的，故要使用 using filesort，不能依靠索引来进行排序；
+
+2.使用了范围查询
+
+select * from t_order where col1 >= 1 and col1 <= 4 order by col_2
+
+![image](https://user-images.githubusercontent.com/15883558/234517665-916c5176-6fe9-4b40-a51c-df955c59f6d9.png)
+
+
+select * from t_order where col1 in(1,2,4) order by col_2
+
+![image](https://user-images.githubusercontent.com/15883558/234517729-35e8191b-5808-467e-9bd3-d7ad9b82c609.png)
+
+
+若走该复合索引 (col_1, col_2, col_3) ，可以发现查询计划中使用到了 using filesort
+
+解释
+
+经过 col_1 的筛选后，col_2 的数据都是无序的
+
+![image](https://user-images.githubusercontent.com/15883558/234517889-65feaa17-bab8-4025-bbbc-f83b70ea7f2a.png)
+
+
+所以要使用 using filesort 再次根据 col_2 排序
+
+若使用等值查询，则不会出现 using filesort，前提是要满足最左匹配原则
+
+select col_1, col_2 from t_order where col_1 = 2 order by col_2;
+
+![image](https://user-images.githubusercontent.com/15883558/234518285-0921d6fe-b7d9-4fff-a7dd-539c7928862b.png)
+
+
+若不满足 最左匹配原则
+
+select col_1, col_3 from t_order where col_1 = 2 order by col_3;
+
+![image](https://user-images.githubusercontent.com/15883558/234518407-d592cbdb-8858-4def-8c34-0310d5724cec.png)
+
+
+
+
+
+
+ 
