@@ -136,3 +136,49 @@ create index idx_score_date_name on film(score, release_date, film_name);
     
 对于该复合索引，排序的值和查询的值都在索引上，没有进行回表的操作，效率很高。唯一的不足是：若要添加新的查询列，就要更改该索引的列，不够灵活。
     
+    
+给排序字段加索引 + 手动回表
+
+改进SQL语句，给 score 字段添加索引
+
+```sql
+# 给排序字段添加索引 + 手动回表
+select score, release_date, film_name,introduction from  film a
+join (select id from film order by score limit 1500000, 20) b
+on  a.id = b.id;
+
+```
+
+思路：先把 limit 字段的 id 找出来，这里走了 score 索引，效率高。然后再走主键索引根据 id 去寻找；
+
+该语句的执行情况
+
+![image](https://user-images.githubusercontent.com/15883558/234507519-1df43a79-fa2e-4e7a-b23b-55083cb464d2.png)
+
+
+可见子查询中走了 score 索引，而外查询走了主键索引，效率非常高，执行速度为 297 ms
+
+缺点
+
+由上面的执行计划可见，它创建了一张中间表 ，走的是全表扫描，也就是说，中间表中的记录越多，该执行效率就越慢，观察以下语句，从500000开始查，查找 1500000 条数据；
+
+```sql
+
+select score, release_date, film_name,introduction from  film a
+join (select id from film order by score limit  500000, 1500000) b
+on  a.id = b.id;
+```
+
+消耗的时间为：911ms，接近一秒
+
+所以我们可以通过业务的方法，限制每次查询的条数即可
+
+解决办法
+
+给排序的字段 + select 的字段添加复合索引
+
+给排序的字段加索引 + 手动回表
+
+深分页的性能问题可以通过业务方法解决：限制每次查询的数量等
+
+<hr>
