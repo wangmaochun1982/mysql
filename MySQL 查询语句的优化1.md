@@ -105,5 +105,34 @@ create index idx_score on film(score);
 浅分页的情况得到了优化，而深分页依然很慢
 
 查看深分页的执行情况
+![image](https://user-images.githubusercontent.com/15883558/234504977-26dcc2e4-b7d3-43ac-83f7-d3405afdbd36.png)
 
+其并没有走 score 索引，走的是全表的扫描，所以给排序字段添加索引只能优化浅分页的情况
+   
+解释
 
+只给 score 添加索引，会造成回表的情况
+
+![image](https://user-images.githubusercontent.com/15883558/234505255-6e55956c-6727-4114-b281-a6f4ad15e2c0.png)
+
+    
+对于浅分页，回表的性能消耗小于全表扫描，故走 score 索引；
+
+对于深分页，回表的性能消耗大于全表扫描，故走 全表扫描；
+    
+给排序字段跟 select 字段添加复合索引 
+    
+给 score, release_date, film_name 添加复合索引
+    
+create index idx_score_date_name on film(score, release_date, film_name);
+    
+浅分页的速度为 58 ms，深分页的速度为 357 ms，两者的速度都得到了提升
+查看深分页的执行情况
+
+![image](https://user-images.githubusercontent.com/15883558/234505944-d1cd5241-a2e6-49bc-bfbb-a4cf18b8795a.png)
+    
+![image](https://user-images.githubusercontent.com/15883558/234506036-eb49f26c-48b9-41de-b2aa-3e5ed27c789b.png)
+
+    
+对于该复合索引，排序的值和查询的值都在索引上，没有进行回表的操作，效率很高。唯一的不足是：若要添加新的查询列，就要更改该索引的列，不够灵活。
+    
