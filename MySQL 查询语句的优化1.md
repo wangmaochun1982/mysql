@@ -66,6 +66,44 @@ select * from orders as t1 inner join orderdetails o on t1.id = o.order_id where
   
   待排序的分页查询的优化
   
-  
+  现有一个电影表
+    
+  ```sql
+  create table film
+(
+    id           integer auto_increment primary key,
+    score        decimal(2, 1) not null,
+    release_date date          not null,
+    film_name    varchar(255)  not null,
+    introduction varchar(255)  not null
+) comment '电影表';  
+ ```
+    
+ 对于浅分页
+    
+ select score, release_date, film_name from film order by score limit 0, 20;
+
+耗时 825ms
+    
+对于深分页
+    
+select score, release_date, film_name, introduction from film order by score limit 1500000, 20;
+
+耗时 1s 247ms
+    
+若不加处理，浅分页的速度快，limit 的深度越深，查询的效率越慢
+
+给排序字段添加索引
+给 score 字段添加索引
+
+create index idx_score on film(score);
+    
+结果
+
+浅分页的速度为 60 ms，深分页的速度为 1s 134ms
+
+浅分页的情况得到了优化，而深分页依然很慢
+
+查看深分页的执行情况
 
 
