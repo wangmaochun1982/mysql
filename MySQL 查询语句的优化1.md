@@ -62,7 +62,7 @@ select * from orders as t1 inner join orderdetails o on t1.id = o.order_id where
 对于复合索引 idx(product_code, order_id) ，因为 product_code 本身是有序的，所以可以快速定位到该 product_code 然后快速获取该 order_id，性能较高；
 
  
- <h1>
+ <hr>
   
   待排序的分页查询的优化
   
