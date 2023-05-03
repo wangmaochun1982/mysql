@@ -17,4 +17,46 @@ select count(*) as tables,concat(round(sum(table_rows)/10000000,2),'M') numrows,
 ```     
 备注：把参数 innodb_buffer_pool_size设置成超过InnoDB的总数据量是没有意义的，通常设置能容纳InnoDB的活跃数据就够了
 
+3.InnoDB缓存池命中率
+
+```sql
+show status like 'Innodb_buffer_pool_read%s';
+
+MariaDB [(none)]> show status like 'Innodb_buffer_pool_read%s';
++----------------------------------+---------------+
+| Variable_name                    | Value         |
++----------------------------------+---------------+
+| Innodb_buffer_pool_read_requests | 2094796734609 |
+| Innodb_buffer_pool_reads         | 990980        |
++----------------------------------+---------------+
+2 rows in set (0.001 sec)
+
+MariaDB [(none)]> select (2094796734609-990980)/2094796734609*100;
++------------------------------------------+
+| (2094796734609-990980)/2094796734609*100 |
++------------------------------------------+
+|                                 100.0000 |
++------------------------------------------+
+1 row in set (0.000 sec)
+
+```
+Innodb_buffer_pool_reads:代表Mysql不能从InnoDB缓存池读到需要的数据而不得不从硬盘中进行读的次数
+使用下面的命令查询MYSQL每秒从磁盘读的次数
+
+```sql
+$ mysqladmin extended-status -ri1|grep Innodb_buffer_pool_reads
+```
+把这个值和硬盘的I/O能力进行对比，如果接近了硬盘处理I/O的上限，那么从OS查看到CPU用于等待I/O的时间(I/O wait)
+eg:vmstat中的CPU和Iostat 中的%iowait,这时硬盘就是瓶颈
+
+
+4.innodb_buffer_pool_instances系统参数
+
+一个和相关innodb_buffer_pool_size的参数是innodb_buffer_pool_instance,它设定把innodb缓存池分成几个区
+
+当innodb_buffer_pool_size>1G时，这个参数起作用，可以设大一点，以提高并发度
+
+
+
+
 
