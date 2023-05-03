@@ -1,7 +1,8 @@
 1.计算MYSQL在负载高峰时占用的总内存
 
 ```sql
-select (@@key_buffer_size + @@innodb_buffer_pool_size +@@innodb_log_buffer_size + @@binlog_cache_size + @@max_connections*(@@read_buffer_size+@@read_rnd_buffer_size+@@sort_buffer_size+@@join_buffer_size+@@thread_stack+@@tmp_table_size))/(1024*1024*1024) as max_memory_gb;
+select (@@key_buffer_size + @@innodb_buffer_pool_size +@@innodb_log_buffer_size + @@binlog_cache_size + 
+@@max_connections*(@@read_buffer_size+@@read_rnd_buffer_size+@@sort_buffer_size+@@join_buffer_size+@@thread_stack+@@tmp_table_size))/(1024*1024*1024) as max_memory_gb;
 ```
 max_connect后面的是单个查询连接的参数，前面的是全局参数
 
