@@ -56,6 +56,12 @@ eg:vmstat中的CPU和Iostat 中的%iowait,这时硬盘就是瓶颈
 
 当innodb_buffer_pool_size>1G时，这个参数起作用，可以设大一点，以提高并发度
 
+5.查询参数文件
+
+```sql
+select variable_path,variable_source,count(*) from performance_schema.variables_info where length(variable_path)!=0 group by variable_path,variable_source
+```
+
 
 
 
