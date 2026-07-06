@@ -1,0 +1,103 @@
+1 次全量 + 2 次增量 备份 + 恢复操作步骤
+
+一、核心原理
+
+全量备份：拷全部数据 + 记录结束时的 LSN（日志位点）
+
+第一次增量：只拷全量之后变化的数据页
+
+第二次增量：只拷第一次增量之后变化的数据页
+
+恢复时：全量 → 追加增量 1 → 追加增量 2 → 最后 prepare 统一回滚 / 重做；最终时间点 = 第二次增量备份结束时刻
+
+二、目录约定（固定不变）
+
+BASE=/data/backup
+
+FULL=$BASE/full        # 全量
+
+INC1=$BASE/inc1       # 第1次增量
+
+INC2=$BASE/inc2       # 第2次增量
+
+三、备份命令（全量 → 增量 1 → 增量 2）
+
+1）第一次：全量备份
+
+xtrabackup --user=root --password=123456 --backup --target-dir=$FULL
+
+2）隔一天：第一次增量备份（基于全量）
+
+xtrabackup --user=root --password=123456 --backup --target-dir=$INC1 --incremental-basedir=$FULL 
+
+3）再隔一天：第二次增量备份（基于第一次增量）
+
+xtrabackup --user=root --password=123456 --backup --target-dir=$INC2 --incremental-basedir=$INC1
+
+四、最关键：恢复逻辑（必须按顺序）
+
+恢复规则步骤：
+
+只对全量 执行 --prepare --apply-log-only
+
+增量 1 也 --prepare --apply-log-only
+
+增量 2 不加 apply-log-only
+
+最后统一 copy-back
+
+五、恢复命令
+
+1. 准备全量（必须加 --apply-log-only 只重做日志、不回滚未提交事务）
+
+xtrabackup --prepare --apply-log-only --target-dir=$FULL
+
+2. 合并第一次增量到全量（必须加 --apply-log-only）
+
+xtrabackup --prepare --apply-log-only --target-dir=$FULL --incremental-dir=$INC1
+
+3. 合并第二次增量到全量（最后一步，不加 apply-log-only）
+
+xtrabackup --prepare --target-dir=$FULL --incremental-dir=$INC2
+
+--prepare 等价于 --apply-log，完全一样！
+
+六、开始恢复数据
+
+1 停 MySQL
+
+systemctl stop mysqld
+
+2 清空数据目录
+
+rm -rf /var/lib/mysql/*
+
+3 恢复数据
+
+xtrabackup --copy-back --target-dir=$FULL
+
+4 修改权限
+
+chown -R mysql:mysql /var/lib/mysql
+
+5 启动 MySQL
+
+systemctl start mysqld
+
+七、最终结论
+
+最终恢复出来的数据 = 第二次增量备份结束时刻
+
+合并顺序：全量 → 增量 1 → 增量 2
+
+只有最后一次增量不加 --apply-log-only，前面全部要加
+
+整个过程不丢数据、不重复、不乱码
+
+八、最容易混淆的 3 个点
+
+增量备份不是拷 binlog，是拷变化的数据页和相应的REDO LOG
+
+恢复时按顺序合并，最终时间点是最后一次增量结束
+
+--apply-log-only 作用：阻止中途回滚未提交事务，保证能继续合并下一个增量
