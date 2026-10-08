@@ -1,0 +1,8 @@
+使用查询命令生成一个SQL语句，用于终止正在运行的MySQL进程。通过连接information_schema.processlist和information_schema.INNODB_TRX表来获取进程ID，并将其与KILL命令组合在一起。
+————————————————
+
+
+SELECT CONCAT('KILL ', id, ';') 
+FROM information_schema.processlist p 
+INNER JOIN information_schema.INNODB_TRX x ON p.id = x.trx_mysql_thread_id;
+
